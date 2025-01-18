@@ -1,0 +1,38 @@
+
+PROJECT:
+  CONFIG_DIR: "erc/config/exp_ood"
+
+# DATASET:
+#   BATCH_PRED: 64
+
+MODEL:
+  TYPE: resnet50
+
+EXP:
+  EPS: 0.1
+  DELTA: 0.1
+  NR_TRIALS: 10
+  NR_TIMESTEPS: 1000
+  BATCH_TIMESTEP: 1
+  
+  PSI_START: 0.0
+  PSI_END: 1.0
+  PSI_INIT: 1.0
+  PSI_STEP: 0.01
+  RISK: fpr_fnr
+  TRACKER: eprocess # ["point_risk", "running_risk", "eprocess"]
+  BET_TYPE: approx_grapa # ["unit_bet", "approx_grapa", "grapa"]
+  NR_POINT_RISK_SAMP: 100
+  NR_BURNIN: 100
+  LOOKBACK: # ["point_risk", "running_risk", "eprocess"]
+    - -1
+    - -1
+    - -1
+
+  DATA_ID: cifar10
+  DATA_OOD: svhn
+  NR_OOD_TIMESTEPS: 200
+  OUT_SCORE: entropy
+  OOD_START: 0.0
+  OOD_END: 1.0
+  OOD_STEP: 0.05
