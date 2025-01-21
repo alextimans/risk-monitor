@@ -20,14 +20,17 @@ EXP:
   PSI_INIT: 1.0
   PSI_STEP: 0.01
   RISK: fpr_fnr
-  TRACKER: eprocess # ["point_risk", "running_risk", "eprocess"]
   BET_TYPE: approx_grapa # ["unit_bet", "approx_grapa", "grapa"]
   NR_POINT_RISK_SAMP: 100
   NR_BURNIN: 100
-  LOOKBACK: # ["point_risk", "running_risk", "eprocess"]
-    - -1
-    - -1
-    - -1
+  TRACKER_WINDOW: # [point_risk, running_risk, eprocess]
+    - 0
+    - 0
+    - 0
+  STOP_COUNTER: # [point_risk, running_risk, eprocess]
+    - 0
+    - 0
+    - 0
 
   DATA_ID: cifar10
   DATA_OOD: svhn

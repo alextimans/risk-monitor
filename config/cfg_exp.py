@@ -46,11 +46,11 @@ CFG.EXP.PSI_INIT = 1.0
 CFG.EXP.PSI_STEP = 0.01
 
 CFG.EXP.RISK = "fpr_fnr"
-CFG.EXP.TRACKER = "eprocess"
 CFG.EXP.BET_TYPE = "approx_grapa"
 CFG.EXP.NR_POINT_RISK_SAMP = 100
 CFG.EXP.NR_BURNIN = 100
-CFG.EXP.LOOKBACK = [-1, -1, -1]  # [point_risk, stream_risk, eprocess]; -1 is no lookback
+CFG.EXP.TRACKER_WINDOW = [0, 0, 0]  # [point_risk, running_risk, eprocess]
+CFG.EXP.STOP_COUNTER = [0, 0, 0]  # [point_risk, running_risk, eprocess]
 
 ### OOD EXP SPECIFIC
 CFG.EXP.DATA_ID = "cifar10"
@@ -98,10 +98,11 @@ def update_from_args(cfg, args):
         "delta": "EXP.DELTA",
         "risk": "EXP.RISK",
         "out_score": "EXP.OUT_SCORE",
-        "tracker": "EXP.TRACKER",
+        # "tracker": "EXP.TRACKER",
         "bet_type": "EXP.BET_TYPE",
         "batch_ts": "EXP.BATCH_TIMESTEP",
-        "lookback": "EXP.LOOKBACK",
+        "tracker_window": "EXP.TRACKER_WINDOW",
+        "stop_counter": "EXP.STOP_COUNTER",
         "device": "MODEL.DEVICE"
     }
 
