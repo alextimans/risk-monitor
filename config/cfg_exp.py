@@ -11,7 +11,7 @@ CFG.PROJECT.CODE_DIR = "erc"
 CFG.PROJECT.CONFIG_FILE = "cfg"
 CFG.PROJECT.CONFIG_DIR = "erc/config"
 CFG.PROJECT.OUTPUT_DIR = "../../../../media/atimans/hdd/output_erc"
-CFG.PROJECT.SEED = 666666
+CFG.PROJECT.SEED = 66666666
 
 CFG.DATASET = CfgNode()
 CFG.DATASET.DIR = "../../../../media/atimans/hdd/datasets/erc"
@@ -30,6 +30,7 @@ CFG.RUN.LOAD_DIR = "auto"  # path to load files from
 CFG.RUN.PLOT_DIR = "plots"  # path to save plots
 CFG.RUN.GET_PRED = False
 CFG.RUN.PLOT = True
+CFG.RUN.SAVE_FILE = True
 
 ### EXPERIMENTS
 
@@ -38,7 +39,7 @@ CFG.EXP.EPS = 0.1
 CFG.EXP.DELTA = 0.1
 CFG.EXP.NR_TRIALS = 10
 
-CFG.EXP.NR_TIMESTEPS = 1000
+CFG.EXP.NR_TIMESTEPS = 2000
 CFG.EXP.BATCH_TIMESTEP = 1
 CFG.EXP.PSI_START = 0.0
 CFG.EXP.PSI_END = 1.0
@@ -55,26 +56,13 @@ CFG.EXP.STOP_COUNTER = [0, 0, 0]  # [point_risk, running_risk, eprocess]
 ### OOD EXP SPECIFIC
 CFG.EXP.DATA_ID = "cifar10"
 CFG.EXP.DATA_OOD = "svhn"
-CFG.EXP.NR_OOD_TIMESTEPS = 200
+CFG.EXP.NR_OOD_TIMESTEPS = 100
 CFG.EXP.OUT_SCORE = "entropy"
 CFG.EXP.OOD_START = 0.0
 CFG.EXP.OOD_END = 1.0
 CFG.EXP.OOD_STEP = 0.05
 
 ### CP EXP SPECIFIC
-
-# CFG.FILE = CfgNode(new_allowed=True)
-# CFG.FILE.SAVE_LABELS = False
-# CFG.FILE.SAVE_PREDS = False
-# CFG.FILE.SAVE_CONF = False
-
-# CFG.EXPERIMENT = CfgNode(new_allowed=True)
-# CFG.EXPERIMENT.LOAD_DIR = "auto" # path to load files from
-# CFG.EXPERIMENT.DIR = "auto"  # subfolder in output_dir
-# CFG.EXPERIMENT.SUFFIX = ""  # suffix for output files in subfolder
-# CFG.EXPERIMENT.FULL_DIR = ""  # full path to output_dir/dataset/experiment_dir_suffix
-# CFG.EXPERIMENT.RUN_PRED = False
-# CFG.EXPERIMENT.PLOT = True
 
 
 def get_cfg_defaults():
@@ -94,11 +82,11 @@ def update_from_args(cfg, args):
         "load_dir": "RUN.LOAD_DIR",
         "exp_suffix": "RUN.SUFFIX",
         "get_pred": "RUN.GET_PRED",
+        "save_file": "RUN.SAVE_FILE",
         "eps": "EXP.EPS",
         "delta": "EXP.DELTA",
         "risk": "EXP.RISK",
         "out_score": "EXP.OUT_SCORE",
-        # "tracker": "EXP.TRACKER",
         "bet_type": "EXP.BET_TYPE",
         "batch_ts": "EXP.BATCH_TIMESTEP",
         "tracker_window": "EXP.TRACKER_WINDOW",

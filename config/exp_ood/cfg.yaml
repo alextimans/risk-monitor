@@ -2,9 +2,6 @@
 PROJECT:
   CONFIG_DIR: "erc/config/exp_ood"
 
-# DATASET:
-#   BATCH_PRED: 64
-
 MODEL:
   TYPE: resnet50
 
@@ -12,16 +9,15 @@ EXP:
   EPS: 0.1
   DELTA: 0.1
   NR_TRIALS: 10
-  NR_TIMESTEPS: 1000
+  NR_TIMESTEPS: 1500
   BATCH_TIMESTEP: 1
-  
   PSI_START: 0.0
   PSI_END: 1.0
   PSI_INIT: 1.0
   PSI_STEP: 0.01
   RISK: fpr_fnr
-  BET_TYPE: approx_grapa # ["unit_bet", "approx_grapa", "grapa"]
-  NR_POINT_RISK_SAMP: 100
+  BET_TYPE: approx_grapa # [unit_bet, approx_grapa, grapa]
+  NR_POINT_RISK_SAMP: 500
   NR_BURNIN: 100
   TRACKER_WINDOW: # [point_risk, running_risk, eprocess]
     - 0
@@ -31,11 +27,13 @@ EXP:
     - 0
     - 0
     - 0
-
   DATA_ID: cifar10
   DATA_OOD: svhn
-  NR_OOD_TIMESTEPS: 200
+  NR_OOD_TIMESTEPS: 100
   OUT_SCORE: entropy
   OOD_START: 0.0
   OOD_END: 1.0
   OOD_STEP: 0.05
+
+  # run cmd
+  # python erc/exp/exp_ood.py --cfg_dir="erc/config/exp_ood" --exp_suffix="_TEST1" --no-get_pred --save_file --batch_ts=1 --tracker_window 0 0 0 --stop_counter 5 25 0 --device="cuda"

@@ -2,7 +2,6 @@ import sys
 import os
 
 # add import paths
-
 code_dir = os.path.dirname(os.path.dirname(__file__))  # erc/
 sys.path.append(code_dir)
 
@@ -10,13 +9,10 @@ import argparse
 from pathlib import Path
 
 import numpy as np
-from scipy.stats import binom
 from tqdm import tqdm
 
 import torch
 import torch.nn as nn
-# from torch.nn import functional as F
-import torchvision
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 from torch.utils.data import DataLoader
@@ -25,6 +21,7 @@ from PyTorch_CIFAR10.cifar10_models.resnet import resnet50
 from config.cfg_exp import get_cfg_defaults, update_from_args
 from util import io_file, misc
 from exp.tracker_ood import PointRiskTracker, RunningRiskTracker, EProcessTracker
+from plots.plot_auto_ood import plot_auto
 
 
 class ExpOOD:
@@ -83,9 +80,10 @@ class ExpOOD:
                 
                 all_preds.append(preds)
                 all_conf.append(conf)
+        # Concatenate all tensors along the batch dimension
         return (
-            torch.tensor(all_preds).to(torch.int32),
-            torch.tensor(all_conf).to(torch.float32)
+            torch.cat(all_preds, dim=0),
+            torch.cat(all_conf, dim=0)
         )
     
     def outlier_score(self, probs):
@@ -103,7 +101,7 @@ class ExpOOD:
         """
         if (ts > 0) and (ts % self.cfg.EXP.NR_OOD_TIMESTEPS == 0) and (ts < len(ood_probs) * self.cfg.EXP.NR_OOD_TIMESTEPS):
             ood_prob_idx += 1
-        return ood_probs[ood_prob_idx]
+        return ood_probs[ood_prob_idx], ood_prob_idx
     
     def draw_samples(self, ood_prob, id_labels, id_preds, id_conf, ood_labels, ood_preds, ood_conf):
         """
@@ -115,8 +113,8 @@ class ExpOOD:
         
         nr_ood = bern_batch.sum().item()
         nr_id = len(bern_batch) - nr_ood
-        ood_idx = np.random.randint(0, len(self.ood_labels), nr_ood)
-        id_idx = np.random.randint(0, len(self.id_labels), nr_id)
+        ood_idx = np.random.randint(0, len(ood_labels), nr_ood)
+        id_idx = np.random.randint(0, len(id_labels), nr_id)
         
         return (
             bern_batch,
@@ -181,14 +179,13 @@ class ExpOOD:
         """
         return len(valid_psi)
     
-    def get_detection_delay_false_alarm(self, psi_size, stop_time, true_stop_time):
+    def get_detection_delay_false_alarm(self, stop_time, true_stop_time):
         """
         measure detection delay and count the false alarms for all psi candidates for one trial
         """
-        false_alarms = torch.zeros(psi_size)
         detection_delay = (stop_time - true_stop_time)
-        early_stops = torch.where(detection_delay < 0)[0]
-        false_alarms[early_stops] = 1
+        false_alarms = torch.zeros(stop_time.shape[-1]) # (psi_size,)
+        false_alarms[torch.where(detection_delay < 0)[0]] = 1
         return detection_delay, false_alarms
 
 
@@ -236,6 +233,13 @@ def create_parser():
         help="If run pred loop to do inference and compute preds (bool).",
     )
     parser.add_argument(
+        "--save_file",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        required=False,
+        help="If shall save tracking results to file.",
+    )
+    parser.add_argument(
         "--eps",
         type=float,
         default=None,
@@ -265,14 +269,6 @@ def create_parser():
         choices=["top1", "entropy"],
         help="Type of outlier score to compute from class prob.",
     )
-    # parser.add_argument(
-    #     "--tracker",
-    #     type=str,
-    #     default=None,
-    #     required=False,
-    #     choices=["point_risk", "running_risk", "eprocess"],
-    #     help="Type of risk tracker to use.",
-    # )
     parser.add_argument(
         "--bet_type",
         type=str,
@@ -283,7 +279,7 @@ def create_parser():
     )
     parser.add_argument(
         "--batch_ts",
-        type=float,
+        type=int,
         default=None,
         required=False,
         help="How many samples are received per timestep.",
@@ -322,8 +318,10 @@ def set_dirs(cfg):
         cfg.RUN.SUB_DIR = f"{cfg.MODEL.TYPE}_{cfg.EXP.DATA_ID}_{cfg.EXP.DATA_OOD}_{cfg.EXP.OUT_SCORE}"
     if cfg.RUN.EXP_DIR == "auto":
         cfg.RUN.EXP_DIR = f"erc_{cfg.EXP.EPS}_{cfg.EXP.DELTA}_{cfg.EXP.RISK}_ts{cfg.EXP.NR_TIMESTEPS}_bts{cfg.EXP.BATCH_TIMESTEP}"
+    if cfg.RUN.LOAD_DIR == "auto": # Point loading dir to sub_dir if not specified
+        cfg.RUN.LOAD_DIR = os.path.join(cfg.PROJECT.OUTPUT_DIR, exp_type, cfg.RUN.SUB_DIR)
     
-    # Create full experiment dir
+    # Create experiment dir in sub_dir
     full_dir = os.path.join(
         cfg.PROJECT.OUTPUT_DIR,  # .../output_erc/
         exp_type,  # .../exp_ood/
@@ -338,10 +336,6 @@ def set_dirs(cfg):
         plot_dir = os.path.join(full_dir, cfg.RUN.PLOT_DIR)
         Path(plot_dir).mkdir(exist_ok=True, parents=True)
         cfg.RUN.PLOT_DIR = plot_dir
-    
-    # Point loading dir to sub_dir if not specified
-    if cfg.RUN.LOAD_DIR == "auto":
-        cfg.RUN.LOAD_DIR = os.path.join(cfg.PROJECT.OUTPUT_DIR, exp_type, cfg.RUN.SUB_DIR)
    
     return cfg
 
@@ -376,20 +370,21 @@ def main():
 
     # Init experiment
     exp = ExpOOD(cfg, logger)
-    id_dataset, id_labels, id_loader, ood_dataset, ood_labels, ood_loader = exp.load_data()
+    model = exp.load_model()
+    _, id_labels, id_loader, _, ood_labels, ood_loader = exp.load_data()
     
     if cfg.RUN.GET_PRED:
         logger.info("Getting predictions and outlier scores...")
-        model = exp.load_model()
         id_preds, id_conf = exp.get_pred(model, id_loader)
         ood_preds, ood_conf = exp.get_pred(model, ood_loader)
-        logger.info("Saving to file.")
         io_file.save_tensor(id_preds, "id_preds", cfg.RUN.LOAD_DIR)
         io_file.save_tensor(id_conf, "id_conf", cfg.RUN.LOAD_DIR)
         io_file.save_tensor(ood_preds, "ood_preds", cfg.RUN.LOAD_DIR)
         io_file.save_tensor(ood_conf, "ood_conf", cfg.RUN.LOAD_DIR)
+        logger.info("Saved to file.")
     else:
         logger.info("Loading existing predictions and outlier scores...")
+        del model
         id_preds = io_file.load_tensor("id_preds", cfg.RUN.LOAD_DIR)
         id_conf = io_file.load_tensor("id_conf", cfg.RUN.LOAD_DIR)
         ood_preds = io_file.load_tensor("ood_preds", cfg.RUN.LOAD_DIR)
@@ -399,13 +394,13 @@ def main():
     logger.info("Starting test stream setting...")
     
     # Init stream vars valid for all trackers
-    ood_probs = torch.arange(cfg.EXP.OOD_START, cfg.EXP.OOD_END, cfg.EXP.OOD_STEP)
-    psi_cand = torch.arange(cfg.EXP.PSI_START, cfg.EXP.PSI_END, cfg.EXP.PSI_STEP)
+    ood_probs = torch.arange(cfg.EXP.OOD_START, cfg.EXP.OOD_END + cfg.EXP.OOD_STEP, cfg.EXP.OOD_STEP)
+    psi_cand = torch.arange(cfg.EXP.PSI_START, cfg.EXP.PSI_END + cfg.EXP.PSI_STEP, cfg.EXP.PSI_STEP)
     psi_size = len(psi_cand)
     stream_bern = torch.zeros((cfg.EXP.NR_TRIALS, cfg.EXP.NR_TIMESTEPS, cfg.EXP.BATCH_TIMESTEP))
     stream_losses = torch.zeros((cfg.EXP.NR_TRIALS, cfg.EXP.NR_TIMESTEPS, psi_size))
 
-    # Initialize tracker objects
+    logger.info("Initializing trackers...")
     point_risk = PointRiskTracker(cfg, logger, psi_cand)
     running_risk = RunningRiskTracker(cfg, logger, psi_cand)
     eprocess = EProcessTracker(cfg, logger, psi_cand)
@@ -417,7 +412,7 @@ def main():
         
         for ts in tqdm(range(cfg.EXP.NR_TIMESTEPS), desc=f"Trial {tr+1}, Time step", leave=False):
             # update ood prob if necessary
-            ood_prob = exp.update_ood_prob(ood_probs, ood_prob_idx, ts)
+            ood_prob, ood_prob_idx = exp.update_ood_prob(ood_probs, ood_prob_idx, ts)
             # draw samples
             bern_batch, lab_batch, pred_batch, conf_batch = exp.draw_samples(
                 ood_prob, id_labels, id_preds, id_conf, ood_labels, ood_preds, ood_conf
@@ -442,6 +437,7 @@ def main():
             
             # more trackers here...
 
+            # UPDATE PER-STEP METRICS
             # check stopping times
             point_risk.stop_time[tr] = point_risk.check_stop_time(
                 point_risk.stop_time[tr], point_risk.risk[tr, ts, :], ts
@@ -471,23 +467,36 @@ def main():
             eprocess.psi_cs_size[tr, ts] = exp.get_psi_cs_size(valid_psi)
             eprocess.psi_cs[tr][ts].append(valid_psi)
             
-        # update per-trial metrics (true stop time = point risk stop time)
+        # UPDATE PER-TRIAL METRICS
         point_risk.detection_delay[tr], point_risk.false_alarms[tr] = exp.get_detection_delay_false_alarm(
-            psi_size, point_risk.stop_time[tr], point_risk.stop_time[tr]
+            stop_time=point_risk.stop_time[tr], true_stop_time=point_risk.stop_time[tr]
         )
         running_risk.detection_delay[tr], running_risk.false_alarms[tr] = exp.get_detection_delay_false_alarm(
-            psi_size, running_risk.stop_time[tr], point_risk.stop_time[tr]
+            stop_time=running_risk.stop_time[tr], true_stop_time=point_risk.stop_time[tr]
         )
         eprocess.detection_delay[tr], eprocess.false_alarms[tr] = exp.get_detection_delay_false_alarm(
-            psi_size, eprocess.stop_time[tr], point_risk.stop_time[tr]
+            stop_time=eprocess.stop_time[tr], true_stop_time=point_risk.stop_time[tr]
         )
+    logger.info("Experiment loop finished.")
     
-    # TODO: CONTINUE HERE
-    # make args SAVE_TO_FILE
-    # save to file if SAVE_TO_FILE
-    # plot if PLOT
-    # make a few default plots as part of the experiment
+    if cfg.RUN.SAVE_FILE:
+        logger.info("Saving experiment results to file...")
+        point_risk.save_to_file("point_risk", cfg.RUN.FULL_DIR)
+        running_risk.save_to_file("running_risk", cfg.RUN.FULL_DIR)
+        eprocess.save_to_file("eprocess", cfg.RUN.FULL_DIR)
     
+    if cfg.RUN.PLOT:
+        logger.info("Plotting experiment results...")
+        plot_auto(
+            cfg,
+            logger,
+            psi_cand,
+            stream_losses,
+            point_risk,
+            running_risk,
+            eprocess
+        )
+        
     logger.info("===== EXPERIMENT END =====")
 
 
