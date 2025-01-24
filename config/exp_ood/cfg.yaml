@@ -17,7 +17,7 @@ EXP:
   PSI_STEP: 0.01
   RISK: fpr_fnr
   BET_TYPE: approx_grapa # [unit_bet, approx_grapa, grapa]
-  NR_POINT_RISK_SAMP: 500
+  NR_POINT_RISK_SAMP: 1000
   NR_BURNIN: 100
   TRACKER_WINDOW: # [point_risk, running_risk, eprocess]
     - 0
@@ -29,7 +29,7 @@ EXP:
     - 0
   DATA_ID: cifar10
   DATA_OOD: svhn
-  NR_OOD_TIMESTEPS: 100
+  NR_OOD_TIMESTEPS: 200
   OUT_SCORE: entropy
   OOD_START: 0.0
   OOD_END: 1.0

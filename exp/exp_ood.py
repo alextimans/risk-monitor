@@ -317,7 +317,7 @@ def set_dirs(cfg):
     if cfg.RUN.SUB_DIR == "auto":
         cfg.RUN.SUB_DIR = f"{cfg.MODEL.TYPE}_{cfg.EXP.DATA_ID}_{cfg.EXP.DATA_OOD}_{cfg.EXP.OUT_SCORE}"
     if cfg.RUN.EXP_DIR == "auto":
-        cfg.RUN.EXP_DIR = f"erc_{cfg.EXP.EPS}_{cfg.EXP.DELTA}_{cfg.EXP.RISK}_ts{cfg.EXP.NR_TIMESTEPS}_bts{cfg.EXP.BATCH_TIMESTEP}"
+        cfg.RUN.EXP_DIR = f"erc_{cfg.EXP.EPS}_{cfg.EXP.DELTA}_{cfg.EXP.RISK}_ts{cfg.EXP.NR_TIMESTEPS}_bts{cfg.EXP.BATCH_TIMESTEP}_ots{cfg.EXP.NR_OOD_TIMESTEPS}_tw{cfg.EXP.TRACKER_WINDOW[1]}"
     if cfg.RUN.LOAD_DIR == "auto": # Point loading dir to sub_dir if not specified
         cfg.RUN.LOAD_DIR = os.path.join(cfg.PROJECT.OUTPUT_DIR, exp_type, cfg.RUN.SUB_DIR)
     
@@ -466,7 +466,7 @@ def main():
             )
             eprocess.psi_cs_size[tr, ts] = exp.get_psi_cs_size(valid_psi)
             eprocess.psi_cs[tr][ts].append(valid_psi)
-            
+        
         # UPDATE PER-TRIAL METRICS
         point_risk.detection_delay[tr], point_risk.false_alarms[tr] = exp.get_detection_delay_false_alarm(
             stop_time=point_risk.stop_time[tr], true_stop_time=point_risk.stop_time[tr]

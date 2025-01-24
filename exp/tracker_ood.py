@@ -59,8 +59,10 @@ class PointRiskTracker():
         """
         check stopping condition of the point risk with robust counter for all psi candidates for one time step
         """
-        all_null_rejections = torch.where(risk >= self.cfg.EXP.EPS)[0]
-        null_rejections = all_null_rejections[all_null_rejections >= self.burn_in]
+        if ts < self.burn_in:
+            return stop_time
+        
+        null_rejections = torch.where(risk >= self.cfg.EXP.EPS)[0]
         
         if len(null_rejections) > 0:
             self.stop_time_robust_counter[null_rejections] += 1
@@ -70,8 +72,9 @@ class PointRiskTracker():
             if len(null_rejections_new) > 0:
                 stop_time[null_rejections_new] = ts
         
-        if ts == self.cfg.EXP.NR_TIMESTEPS:  # At the final time step, assign T to any index still marked as "not stopped"
+        if ts == (self.cfg.EXP.NR_TIMESTEPS - 1):  # At the final time step, assign T to any index still marked as "not stopped"
             stop_time[stop_time == -1] = self.cfg.EXP.NR_TIMESTEPS
+            self.stop_time_robust_counter = torch.zeros((self.psi_size)) # reset robust counter
         
         return stop_time
     
@@ -130,8 +133,10 @@ class RunningRiskTracker():
         """
         check stopping condition of the running risk with robust counter for all psi candidates for one time step
         """
-        all_null_rejections = torch.where(risk >= self.cfg.EXP.EPS)[0]
-        null_rejections = all_null_rejections[all_null_rejections >= self.burn_in]
+        if ts < self.burn_in:
+            return stop_time
+        
+        null_rejections = torch.where(risk >= self.cfg.EXP.EPS)[0]
         
         if len(null_rejections) > 0:
             self.stop_time_robust_counter[null_rejections] += 1
@@ -141,52 +146,11 @@ class RunningRiskTracker():
             if len(null_rejections_new) > 0:
                 stop_time[null_rejections_new] = ts
         
-        if ts == self.cfg.EXP.NR_TIMESTEPS:  # At the final time step, assign T to any index still marked as "not stopped"
+        if ts == (self.cfg.EXP.NR_TIMESTEPS - 1):  # At the final time step, assign T to any index still marked as "not stopped"
             stop_time[stop_time == -1] = self.cfg.EXP.NR_TIMESTEPS
+            self.stop_time_robust_counter = torch.zeros((self.psi_size)) # reset robust counter
         
         return stop_time
-                
-    # robust_null_rejections = torch.where(self.stop_time_robust_counter >= self.stop_counter)[0]
-    
-    # if len(robust_null_rejections) > 0:
-    #     null_rejections_new = robust_null_rejections[stop_time[robust_null_rejections] == -1] # new rejections (not yet stopped)
-        
-    #     if len(null_rejections_new) > 0:
-    #         stop_time[null_rejections_new] = ts
-    
-    # if ts == self.cfg.EXP.NR_TIMESTEPS:  # At the final time step, assign T to any index still marked as "not stopped"
-    #     stop_time[stop_time == -1] = self.cfg.EXP.NR_TIMESTEPS
-    
-    # return stop_time
-    
-    # def check_stop_time(self, risk):
-    #     stop_time = torch.zeros(self.psi_size)
-    #     for psi_idx in range(self.psi_size):
-            
-    #         # Identify crossings after the burn-in period
-    #         null_rejections = torch.where(risk[:, psi_idx] >= self.cfg.EXP.EPS)[0]
-    #         burnin_null_rejections = null_rejections[null_rejections >= 0] # hardcode burn_in=0
-    #         nr_rejections = len(burnin_null_rejections)
-            
-    #         if nr_rejections > 0:  # At least one crossing
-    #             if nr_rejections >= self.stop_lookback:  # Check for robust crossings
-    #                 # Sliding window check for `stop_lookback` consecutive integers
-    #                 for i in range(nr_rejections - self.stop_lookback + 1):
-    #                     start = burnin_null_rejections[i]
-    #                     if torch.all(burnin_null_rejections[i:i + self.stop_lookback] == torch.arange(start, start + self.stop_lookback)):
-    #                         stop_time[psi_idx] = burnin_null_rejections[i + self.stop_lookback]
-    #                         break
-    #                 else:
-    #                     # No robust crossings, use the first crossing
-    #                     stop_time[psi_idx] = burnin_null_rejections[0]
-    #             else:
-    #                 # Not enough crossings, use the first crossing
-    #                 stop_time[psi_idx] = burnin_null_rejections[0]
-    #         else:
-    #             # No crossings, stop at the final time step
-    #             stop_time[psi_idx] = self.cfg.EXP.NR_TIMESTEPS
-        
-    #     return stop_time
     
     def save_to_file(self, filename, filedir):
         save_dict = {
@@ -304,3 +268,21 @@ class EProcessTracker():
             "detection_delay": self.detection_delay
         }
         io_file.save_tensor(save_dict, filename, filedir)
+
+
+class NaiveEProcessTracker(EProcessTracker): # # Inherit from EProcessTracker
+    def __init__(self, cfg, logger, psi_cand):
+        super().__init__(cfg, logger, psi_cand) 
+    
+    def get_eprocess(self, e_val, tr, ts):
+        """
+        Custom logic for e-process calculation, take mean instead of product
+        """
+        if ts == 0:
+            e_process = torch.ones_like(e_val)
+        else:
+            # add to mean instead of multiply
+            # TODO: need to add running MEAN calculation somewhere
+            e_process = self.eprocess[tr, ts - 1, :] + e_val
+            # e_process = self.eprocess[tr, ts - 1, :] * e_val
+        return e_process
