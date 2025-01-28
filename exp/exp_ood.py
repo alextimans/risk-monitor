@@ -20,7 +20,7 @@ from torch.utils.data import DataLoader
 from PyTorch_CIFAR10.cifar10_models.resnet import resnet50
 from config.cfg_exp import get_cfg_defaults, update_from_args
 from util import io_file, misc
-from exp.tracker_ood import PointRiskTracker, RunningRiskTracker, EProcessTracker
+from exp.tracker_ood import PointRiskTracker, RunningRiskTracker, EProcessTracker, NaiveEProcessTracker, PMEBProcessTracker
 from plots.plot_auto_ood import plot_auto
 
 
@@ -404,6 +404,8 @@ def main():
     point_risk = PointRiskTracker(cfg, logger, psi_cand)
     running_risk = RunningRiskTracker(cfg, logger, psi_cand)
     eprocess = EProcessTracker(cfg, logger, psi_cand)
+    naive_eprocess = NaiveEProcessTracker(cfg, logger, psi_cand)
+    pmeb_eprocess = PMEBProcessTracker(cfg, logger, psi_cand)
     
     logger.info("Running experiment loop...")
     for tr in range(cfg.EXP.NR_TRIALS):
@@ -435,6 +437,19 @@ def main():
             eprocess.evalues[tr, ts, :] = eprocess.get_evalues(loss_batch, eprocess.bets[tr, ts, :], reduction="mean")
             eprocess.eprocess[tr, ts, :] = eprocess.get_eprocess(eprocess.evalues[tr, ts, :], tr, ts)
             
+            naive_eprocess.bets[tr, ts, :] = naive_eprocess.get_bets(stream_losses[tr], ts)
+            naive_eprocess.evalues[tr, ts, :] = naive_eprocess.get_evalues(loss_batch, naive_eprocess.bets[tr, ts, :], reduction="mean")
+            naive_eprocess.eprocess[tr, ts, :] = naive_eprocess.get_eprocess(naive_eprocess.evalues[tr, ts, :], tr, ts)
+            
+            pmeb_eprocess.bets[tr, ts, :] = pmeb_eprocess.get_bets(stream_losses[tr], ts)
+            pmeb_eprocess.evalues[tr, ts, :] = pmeb_eprocess.get_evalues(stream_losses[tr], ts, loss_batch, pmeb_eprocess.bets[tr, ts, :], reduction="mean")
+            pmeb_eprocess.eprocess[tr, ts, :] = pmeb_eprocess.get_eprocess(pmeb_eprocess.evalues[tr, ts, :], tr, ts)
+            
+            # print("+++ PMEB EPROCESS +++")
+            # print(pmeb_eprocess.bets[tr, ts, :])
+            # print(pmeb_eprocess.evalues[tr, ts, :])
+            # print(pmeb_eprocess.eprocess[tr, ts, :])
+            
             # more trackers here...
 
             # UPDATE PER-STEP METRICS
@@ -447,6 +462,12 @@ def main():
             )
             eprocess.stop_time[tr] = eprocess.check_stop_time(
                 eprocess.stop_time[tr], eprocess.eprocess[tr, ts, :], ts
+            )
+            naive_eprocess.stop_time[tr] = naive_eprocess.check_stop_time(
+                naive_eprocess.stop_time[tr], naive_eprocess.eprocess[tr, ts, :], ts
+            )
+            pmeb_eprocess.stop_time[tr] = pmeb_eprocess.check_stop_time(
+                pmeb_eprocess.stop_time[tr], pmeb_eprocess.eprocess[tr, ts, :], ts
             )
             # get psi-CIs and store
             point_risk.psi_select[tr, ts], valid_psi = exp.get_valid_psi(
@@ -466,6 +487,20 @@ def main():
             )
             eprocess.psi_cs_size[tr, ts] = exp.get_psi_cs_size(valid_psi)
             eprocess.psi_cs[tr][ts].append(valid_psi)
+            
+            naive_eprocess.psi_select[tr, ts], valid_psi = exp.get_valid_psi(
+                psi_cand, naive_eprocess.stop_time[tr], psi_select="min"
+            )
+            naive_eprocess.psi_cs_size[tr, ts] = exp.get_psi_cs_size(valid_psi)
+            naive_eprocess.psi_cs[tr][ts].append(valid_psi)
+            
+            pmeb_eprocess.psi_select[tr, ts], valid_psi = exp.get_valid_psi(
+                psi_cand, pmeb_eprocess.stop_time[tr], psi_select="min"
+            )
+            pmeb_eprocess.psi_cs_size[tr, ts] = exp.get_psi_cs_size(valid_psi)
+            pmeb_eprocess.psi_cs[tr][ts].append(valid_psi)
+            
+            # print("STOP TIME:", pmeb_eprocess.stop_time[tr])
         
         # UPDATE PER-TRIAL METRICS
         point_risk.detection_delay[tr], point_risk.false_alarms[tr] = exp.get_detection_delay_false_alarm(
@@ -477,6 +512,12 @@ def main():
         eprocess.detection_delay[tr], eprocess.false_alarms[tr] = exp.get_detection_delay_false_alarm(
             stop_time=eprocess.stop_time[tr], true_stop_time=point_risk.stop_time[tr]
         )
+        naive_eprocess.detection_delay[tr], naive_eprocess.false_alarms[tr] = exp.get_detection_delay_false_alarm(
+            stop_time=naive_eprocess.stop_time[tr], true_stop_time=point_risk.stop_time[tr]
+        )
+        pmeb_eprocess.detection_delay[tr], pmeb_eprocess.false_alarms[tr] = exp.get_detection_delay_false_alarm(
+            stop_time=pmeb_eprocess.stop_time[tr], true_stop_time=point_risk.stop_time[tr]
+        )
     logger.info("Experiment loop finished.")
     
     if cfg.RUN.SAVE_FILE:
@@ -484,6 +525,8 @@ def main():
         point_risk.save_to_file("point_risk", cfg.RUN.FULL_DIR)
         running_risk.save_to_file("running_risk", cfg.RUN.FULL_DIR)
         eprocess.save_to_file("eprocess", cfg.RUN.FULL_DIR)
+        naive_eprocess.save_to_file("naive_eprocess", cfg.RUN.FULL_DIR)
+        pmeb_eprocess.save_to_file("pmeb_eprocess", cfg.RUN.FULL_DIR)
     
     if cfg.RUN.PLOT:
         logger.info("Plotting experiment results...")
@@ -494,7 +537,9 @@ def main():
             stream_losses,
             point_risk,
             running_risk,
-            eprocess
+            eprocess,
+            naive_eprocess,
+            pmeb_eprocess,
         )
         
     logger.info("===== EXPERIMENT END =====")

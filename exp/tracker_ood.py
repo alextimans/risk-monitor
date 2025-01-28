@@ -250,7 +250,7 @@ class EProcessTracker():
             if len(null_rejections_new) > 0:
                 stop_time[null_rejections_new] = ts
         
-        if ts == self.cfg.EXP.NR_TIMESTEPS:  # At the final time step, assign T to any index still marked as "not stopped"
+        if ts == (self.cfg.EXP.NR_TIMESTEPS - 1):  # At the final time step, assign T to any index still marked as "not stopped"
             stop_time[stop_time == -1] = self.cfg.EXP.NR_TIMESTEPS
         
         return stop_time    
@@ -274,15 +274,75 @@ class NaiveEProcessTracker(EProcessTracker): # # Inherit from EProcessTracker
     def __init__(self, cfg, logger, psi_cand):
         super().__init__(cfg, logger, psi_cand) 
     
+    def get_evalues(self, loss_batch, bets, reduction="mean"):
+        """
+        get batch-wise e-values for one time step and reduce
+        """
+        e_val = bets * (loss_batch - self.cfg.EXP.EPS)
+        if reduction == "mean":
+            e_val = e_val.mean(dim=0)
+        elif reduction == "prod":
+            e_val = e_val.prod(dim=0)
+        return e_val
+    
     def get_eprocess(self, e_val, tr, ts):
         """
-        Custom logic for e-process calculation, take mean instead of product
+        Custom logic for e-process calculation, take sum instead of product
         """
         if ts == 0:
             e_process = torch.ones_like(e_val)
         else:
-            # add to mean instead of multiply
-            # TODO: need to add running MEAN calculation somewhere
             e_process = self.eprocess[tr, ts - 1, :] + e_val
-            # e_process = self.eprocess[tr, ts - 1, :] * e_val
         return e_process
+
+
+class PMEBProcessTracker(EProcessTracker): # # Inherit from EProcessTracker
+    def __init__(self, cfg, logger, psi_cand):
+        super().__init__(cfg, logger, psi_cand) 
+    
+    def get_bets(self, losses, ts):
+        """
+        get bet for e-process for one time step
+        """
+        window = self.tracker_window if self.tracker_window > 0 else ts
+        ts_start = max(ts - window, 0)
+        
+        # Recommended plug-in for predictably-mixed Empirical Bernstein
+        # see https://arxiv.org/pdf/2010.09686, sec 3.2
+        # mu = losses[ts_start:ts].mean(dim=0) + 1e-10
+        var = losses[ts_start:ts].var(dim=0) + 1e-10
+        c = 0.5  # constant, recommended 0.5 or 0.75
+        log_1 = torch.log(torch.tensor(2 / self.cfg.EXP.DELTA))
+        log_2 = torch.log(torch.tensor(1 + ts))
+        bet = torch.max(torch.tensor(0), torch.min(torch.sqrt((2 * log_1) / (var * ts * log_2)), torch.tensor(c)))
+        
+        if ts < self.burn_in:
+            bet = torch.zeros_like(bet)
+        
+        return bet # (psi_size,)
+    
+    def get_evalues(self, losses, ts, loss_batch, bets, reduction="mean"):
+        """
+        get batch-wise e-values for one time step and reduce
+        """
+        window = self.tracker_window if self.tracker_window > 0 else ts
+        ts_start = max(ts - window, 0)
+        
+        mu = losses[ts_start:ts].mean(dim=0) + 1e-10
+        v = 4 * (loss_batch - mu) ** 2
+        p = 0.25 * (- torch.log(1 - bets) - bets)
+        e_val = torch.exp(bets * (loss_batch - self.cfg.EXP.EPS) - v * p)
+        
+        if reduction == "mean":
+            e_val = e_val.mean(dim=0)
+        elif reduction == "prod":
+            e_val = e_val.prod(dim=0)
+        return e_val
+
+    def get_eprocess(self, e_val, tr, ts):
+        if ts == 0:
+            e_process = torch.ones_like(e_val)
+        else:
+            e_process = self.eprocess[tr, ts - 1, :] * e_val
+        return e_process
+    
