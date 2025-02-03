@@ -13,28 +13,29 @@ from tqdm import tqdm
 
 import torch
 import torch.nn as nn
-import torchvision.transforms as transforms
-import torchvision.datasets as datasets
-from torch.utils.data import DataLoader
 
-from PyTorch_CIFAR10.cifar10_models.resnet import resnet50
 from config.cfg_exp import get_cfg_defaults, update_from_args
 from util import io_file, misc
-from exp.tracker_ood import PointRiskTracker, RunningRiskTracker, EProcessTracker, NaiveEProcessTracker, PMEBProcessTracker
-from plots.plot_auto_ood import plot_auto
+from exp.tracker_cp import PointRiskTracker, RunningRiskTracker, EProcessTracker, NaiveEProcessTracker, PMEBProcessTracker
+from plots.plot_auto_cp import plot_auto
+
+from wildtime.methods.dataloaders import FastDataLoader
+from wildtime.configs.eval_fix.configs_fmow import configs_fmow_erm
+from wildtime.data.fmow import FMoW
+from wildtime.networks.fmow import FMoWNetwork
 
 
-class ExpOOD:
-    def __init__(self, cfg, logger):
+class ExpCP:
+    def __init__(self, cfg, model_cfg, logger):
         self.cfg = cfg
+        self.model_cfg = model_cfg
         self.logger = logger
         self.device = self.cfg.MODEL.DEVICE
         
     def load_model(self):
-        if self.cfg.MODEL.TYPE == "resnet50":
-            model = resnet50(pretrained=True)
-            self.data_mean = [0.4914, 0.4822, 0.4465]
-            self.data_std = [0.2471, 0.2435, 0.2616]
+        if self.cfg.MODEL.TYPE == "erm":
+            state_dict = torch.load(self.model_cfg.log_dir, map_location=self.device)
+            model = FMoWNetwork(self.model_cfg, weights=state_dict)
         else:
             raise ValueError(f"Model type '{self.cfg.MODEL.TYPE}' not supported.")
         model.to(self.device)
@@ -42,57 +43,64 @@ class ExpOOD:
         self.logger.info(f"Loaded model '{self.cfg.MODEL.TYPE}'.")
         return model
         
-    def load_data(self):
-        transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize(self.data_mean, self.data_std)
-        ])
-        
-        if self.cfg.EXP.DATA_ID == "cifar10":
-            id_dataset = datasets.CIFAR10(root=self.cfg.DATASET.DIR, train=False, transform=transform)
-            id_labels = torch.tensor(id_dataset.targets)
-            id_loader = DataLoader(id_dataset, batch_size=self.cfg.DATASET.BATCH_PRED, shuffle=False)
+    def load_data(self, data_name="fmow"):
+        if data_name == "fmow":
+            data = FMoW(self.model_cfg)
+            data.mode = 2  # test mode, all data
         else:
-            raise ValueError(f"Dataset '{self.cfg.EXP.DATA_ID}' for ID not supported.")
+            raise ValueError(f"Data '{data_name}' not supported.")
         
-        if self.cfg.EXP.DATA_OOD == "svhn":
-            ood_dataset = datasets.SVHN(root=self.cfg.DATASET.DIR, split='test', transform=transform)
-            ood_labels = torch.tensor(ood_dataset.labels)
-            ood_loader = DataLoader(ood_dataset, batch_size=self.cfg.DATASET.BATCH_PRED, shuffle=False)
+        self.logger.info("Loaded dataset")
+        return data
+    
+    def prepare_data(self, x, y):
+        if isinstance(x, tuple):
+            x = (elt.to(self.device) for elt in x)
         else:
-            raise ValueError(f"Dataset '{self.cfg.EXP.DATA_OOD}' for OOD not supported.")
+            x = x.to(self.device)
+        if len(y.shape) > 1:
+            y = y.squeeze(1).to(self.device)
+        return x, y
         
-        self.logger.info("Loaded datasets")
-        self.logger.info(f"ID dataset: {self.cfg.EXP.DATA_ID}, {len(id_loader.dataset), id_loader.dataset.__getitem__(0)[0].shape}")
-        self.logger.info(f"OOD dataset: {self.cfg.EXP.DATA_OOD}, {len(ood_loader.dataset), ood_loader.dataset.__getitem__(0)[0].shape}")
-        return id_dataset, id_labels, id_loader, ood_dataset, ood_labels, ood_loader
-        
-    def get_pred(self, model, loader):
-        all_preds, all_conf = [], []
+    def get_pred(self, model, data):
+        all_labs, all_preds, all_conf = [], [], []
 
-        with torch.no_grad():
-            for images, _ in tqdm(loader, desc="Batch"):
-                images = images.to(self.device)
-                out = model(images).to('cpu')
-                probs = nn.functional.softmax(out, dim=1)
-                preds = torch.argmax(probs, dim=1)
-                conf = self.outlier_score(probs)
-                
-                all_preds.append(preds)
-                all_conf.append(conf)
+        for ts in range(1, self.model_cfg.eval_next_timestamps + 1):
+            curr_time = self.model_cfg.split_time + ts
+            self.logger.info(f"Current timestamp: {curr_time}")
+            data.update_current_timestamp(curr_time)
+
+            loader = FastDataLoader(
+                dataset=data,
+                batch_size=self.model_cfg.mini_batch_size,
+                num_workers=self.model_cfg.num_workers,
+                collate_fn=None
+            )    
+            
+            with torch.no_grad():
+                for _, (images, labels) in enumerate(tqdm(loader, desc="Batch")):
+                    images, labels = self.prepare_data(images, labels)
+                    out = model(images).to("cpu")
+                    probs = nn.functional.softmax(out, dim=1)
+                    preds = torch.argmax(probs, dim=1)
+                    conf = self.set_score(probs)
+                    
+                    all_labs.append(labels.to("cpu"))
+                    all_preds.append(preds)
+                    all_conf.append(conf)
+        
         # Concatenate all tensors along the batch dimension
         return (
+            torch.cat(all_labs, dim=0),
             torch.cat(all_preds, dim=0),
             torch.cat(all_conf, dim=0)
         )
     
-    def outlier_score(self, probs):
-        if self.cfg.EXP.OUT_SCORE == "top1":
-            score = 1 - torch.max(probs, axis=1)[0]
-        elif self.cfg.EXP.OUT_SCORE == "entropy":
-            score = - torch.sum(probs * torch.log(probs + 1e-10), axis=1) / torch.log(torch.tensor(probs.shape[1]).float())
+    def set_score(self, probs):
+        if self.cfg.EXP.SET_SCORE == "probs":
+            score = probs
         else:
-            raise ValueError(f"Outlier score '{self.cfg.EXP.OUT_SCORE}' not supported.")
+            raise ValueError(f"Set score '{self.cfg.EXP.OUT_SCORE}' not supported.")
         return score
     
     def update_ood_prob(self, ood_probs, ood_prob_idx, ts):
@@ -258,16 +266,16 @@ def create_parser():
         type=str,
         default=None,
         required=False,
-        choices=["fpr_fnr", "fnr", "fpr"],
+        choices=["miscover"],
         help="Desired loss function to compute associated risks.",
     )
     parser.add_argument(
-        "--out_score",
+        "--set_score",
         type=str,
         default=None,
         required=False,
-        choices=["top1", "entropy"],
-        help="Type of outlier score to compute from class prob.",
+        choices=["probs"],
+        help="Type of confidence score to compute from class prob.",
     )
     parser.add_argument(
         "--bet_type",
@@ -315,7 +323,7 @@ def set_dirs(cfg):
     # Determine experiment names
     exp_type = cfg.PROJECT.CONFIG_DIR.split("/")[-1]
     if cfg.RUN.SUB_DIR == "auto":
-        cfg.RUN.SUB_DIR = f"{cfg.MODEL.TYPE}_{cfg.EXP.DATA_ID}_{cfg.EXP.DATA_OOD}_{cfg.EXP.OUT_SCORE}"
+        cfg.RUN.SUB_DIR = f"{cfg.MODEL.TYPE}_fmow_{cfg.EXP.SET_SCORE}_{cfg.EXP.SPLIT_TIME}"
     if cfg.RUN.EXP_DIR == "auto":
         cfg.RUN.EXP_DIR = f"erc_{cfg.EXP.EPS}_{cfg.EXP.DELTA}_{cfg.EXP.RISK}_ts{cfg.EXP.NR_TIMESTEPS}_bts{cfg.EXP.BATCH_TIMESTEP}_ots{cfg.EXP.NR_OOD_TIMESTEPS}_tw{cfg.EXP.TRACKER_WINDOW[1]}"
     if cfg.RUN.LOAD_DIR == "auto": # Point loading dir to sub_dir if not specified
@@ -324,9 +332,9 @@ def set_dirs(cfg):
     # Create experiment dir in sub_dir
     full_dir = os.path.join(
         cfg.PROJECT.OUTPUT_DIR,  # .../output_erc/
-        exp_type,  # .../exp_ood/
-        cfg.RUN.SUB_DIR,  # .../resnet50_cifar10_svhn_entropy/
-        f"{cfg.RUN.EXP_DIR}{cfg.RUN.SUFFIX}"  # .../erc_0.1_0.05_fpr_fnr_ts1000_bts10/
+        exp_type,  # .../exp_cp/
+        cfg.RUN.SUB_DIR,  # .../erm_fmow_top1_13/
+        f"{cfg.RUN.EXP_DIR}{cfg.RUN.SUFFIX}"  # .../erc_0.1_0.05_miscover_ts1000_bts10/
     )
     Path(full_dir).mkdir(exist_ok=True, parents=True)
     cfg.RUN.FULL_DIR = full_dir
@@ -338,6 +346,24 @@ def set_dirs(cfg):
         cfg.RUN.PLOT_DIR = plot_dir
    
     return cfg
+
+
+def update_model_cfg_from_global_cfg(cfg):
+    """
+    for FMoW model config
+    """
+    model_cfg = argparse.Namespace(**configs_fmow_erm)
+    model_cfg.data_dir = cfg.DATASET.DIR
+    model_cfg.results_dir = cfg.RUN.FULL_DIR
+    model_cfg.log_dir = cfg.MODEL.DIR
+    
+    model_cfg.mini_batch_size = cfg.DATASET.BATCH_PRED
+    model_cfg.split_time = cfg.EXP.SPLIT_TIME
+    model_cfg.eval_next_timestamps = 15 - model_cfg.split_time
+    model_cfg.load_model = True
+    model_cfg.num_workers = 0
+    
+    return model_cfg
 
 
 def main():
@@ -357,6 +383,9 @@ def main():
     cfg = set_dirs(cfg)
     cfg.freeze()
     
+    # Update model cfg from global cfg
+    model_cfg = update_model_cfg_from_global_cfg(cfg)
+    
     # Set up logger & seed
     logger = misc.get_logger(cfg.RUN.FULL_DIR, "log.txt")
     misc.set_seed(cfg.PROJECT.SEED, logger)
@@ -367,31 +396,31 @@ def main():
     logger.info(f"Using config file '{cfg.PROJECT.CONFIG_FILE}'.")
     logger.info(f"Saving experiment files to '{cfg.RUN.FULL_DIR}'.")
     logger.info(f"Loading experiment files from above or '{cfg.RUN.LOAD_DIR}'.")
+    logger.info(f"Model config: {model_cfg}")
 
     # Init experiment
-    exp = ExpOOD(cfg, logger)
+    exp = ExpCP(cfg, model_cfg, logger)
     model = exp.load_model()
-    _, id_labels, id_loader, _, ood_labels, ood_loader = exp.load_data()
+    data = exp.load_data()
     
     if cfg.RUN.GET_PRED:
-        logger.info("Getting predictions and outlier scores...")
-        id_preds, id_conf = exp.get_pred(model, id_loader)
-        ood_preds, ood_conf = exp.get_pred(model, ood_loader)
-        io_file.save_tensor(id_preds, "id_preds", cfg.RUN.LOAD_DIR)
-        io_file.save_tensor(id_conf, "id_conf", cfg.RUN.LOAD_DIR)
-        io_file.save_tensor(ood_preds, "ood_preds", cfg.RUN.LOAD_DIR)
-        io_file.save_tensor(ood_conf, "ood_conf", cfg.RUN.LOAD_DIR)
+        logger.info("Getting labels, predictions and confidence scores...")
+        labs, preds, confs = exp.get_pred(model, data)
+        io_file.save_tensor(labs, "labs", cfg.RUN.LOAD_DIR)
+        io_file.save_tensor(preds, "preds", cfg.RUN.LOAD_DIR)
+        io_file.save_tensor(confs, "confs", cfg.RUN.LOAD_DIR)
         logger.info("Saved to file.")
     else:
-        logger.info("Loading existing predictions and outlier scores...")
+        logger.info("Loading existing labels, predictions and confidence scores...")
         del model
-        id_preds = io_file.load_tensor("id_preds", cfg.RUN.LOAD_DIR)
-        id_conf = io_file.load_tensor("id_conf", cfg.RUN.LOAD_DIR)
-        ood_preds = io_file.load_tensor("ood_preds", cfg.RUN.LOAD_DIR)
-        ood_conf = io_file.load_tensor("ood_conf", cfg.RUN.LOAD_DIR)
+        labs = io_file.load_tensor("labs", cfg.RUN.LOAD_DIR)
+        preds = io_file.load_tensor("preds", cfg.RUN.LOAD_DIR)
+        confs = io_file.load_tensor("confs", cfg.RUN.LOAD_DIR)
         logger.info("Loaded to file.")
     
     logger.info("Starting test stream setting...")
+    
+    raise NotImplementedError("Continue from here...")
     
     # Init stream vars valid for all trackers
     ood_probs = torch.arange(cfg.EXP.OOD_START, cfg.EXP.OOD_END + cfg.EXP.OOD_STEP, cfg.EXP.OOD_STEP)

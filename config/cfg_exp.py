@@ -20,6 +20,7 @@ CFG.DATASET.BATCH_PRED = 64
 CFG.MODEL = CfgNode(new_allowed=True)
 CFG.MODEL.DEVICE = "cpu"
 CFG.MODEL.TYPE = "resnet50"
+CFG.MODEL.DIR = "models"
 
 CFG.RUN = CfgNode(new_allowed=True)
 CFG.RUN.SUB_DIR = "auto"  # subfolder in output_dir/exp_name
@@ -63,7 +64,8 @@ CFG.EXP.OOD_END = 1.0
 CFG.EXP.OOD_STEP = 0.05
 
 ### CP EXP SPECIFIC
-
+CFG.EXP.SPLIT_TIME = 13
+CFG.EXP.SET_SCORE = "probs"
 
 def get_cfg_defaults():
     """Get a yacs CfgNode object with default values."""
@@ -87,6 +89,7 @@ def update_from_args(cfg, args):
         "delta": "EXP.DELTA",
         "risk": "EXP.RISK",
         "out_score": "EXP.OUT_SCORE",
+        "set_score": "EXP.SET_SCORE",
         "bet_type": "EXP.BET_TYPE",
         "batch_ts": "EXP.BATCH_TIMESTEP",
         "tracker_window": "EXP.TRACKER_WINDOW",
@@ -104,3 +107,4 @@ def update_from_args(cfg, args):
     ]
     cfg.merge_from_list(args_list)
     return cfg, args_list
+

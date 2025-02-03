@@ -1,9 +1,10 @@
 
 PROJECT:
-  CONFIG_DIR: "erc/config/exp_ood"
+  CONFIG_DIR: "erc/config/exp_cp"
 
 MODEL:
-  TYPE: resnet50
+  TYPE: erm
+  DIR: "./models/fmow_models/fmow_ERM-train_update_iter=3000-lr=0.0001-mini_batch_size=64-seed=1-offline_time=13"
 
 EXP:
   EPS: 0.1
@@ -15,7 +16,7 @@ EXP:
   PSI_END: 1.0
   PSI_INIT: 1.0
   PSI_STEP: 0.01
-  RISK: fpr_fnr
+  RISK: miscover
   BET_TYPE: approx_grapa # [unit_bet, approx_grapa, grapa]
   NR_POINT_RISK_SAMP: 1000
   NR_BURNIN: 100
@@ -27,13 +28,9 @@ EXP:
     - 0
     - 0
     - 0
-  DATA_ID: cifar10
-  DATA_OOD: svhn
-  NR_OOD_TIMESTEPS: 200
-  OUT_SCORE: entropy
-  OOD_START: 0.0
-  OOD_END: 1.0
-  OOD_STEP: 0.05
+  SPLIT_TIME: 10
+  SET_SCORE: probs
+
 
   # run cmd
-  # python erc/exp/exp_ood.py --cfg_dir="erc/config/exp_ood" --exp_suffix="_TEST1" --no-get_pred --save_file --batch_ts=1 --tracker_window 0 0 0 --stop_counter 5 25 0 --device="cuda"
+  # python erc/exp/exp_cp.py --cfg_dir="erc/config/exp_cp" --exp_suffix="_TEST1" --get_pred --save_file --batch_ts=1 --tracker_window 0 0 0 --stop_counter 5 25 0 --device="cuda"
