@@ -64,8 +64,10 @@ CFG.EXP.OOD_END = 1.0
 CFG.EXP.OOD_STEP = 0.05
 
 ### CP EXP SPECIFIC
-CFG.EXP.SPLIT_TIME = 13
+CFG.EXP.SPLIT_TIME = 10
 CFG.EXP.SET_SCORE = "probs"
+CFG.EXP.NR_CP_TIMESTEPS = 365
+
 
 def get_cfg_defaults():
     """Get a yacs CfgNode object with default values."""

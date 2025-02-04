@@ -30,27 +30,15 @@ class PointRiskTracker():
         self.false_alarms = torch.zeros((self.cfg.EXP.NR_TRIALS, self.psi_size))
         self.detection_delay = torch.zeros((self.cfg.EXP.NR_TRIALS, self.psi_size))
         
-    def get_risk(self, loss_batch, bern_batch, explicit: bool = False):
+    def get_risk(self, loss_batch, explicit: bool = False):
         """
         get point risk using fully sampled batch or explicit formula
         """
-        if self.cfg.EXP.RISK == "fpr_fnr":
+        if self.cfg.EXP.RISK == "miscover":
             if explicit:
                 pass
             else:
                 risk = loss_batch.mean(dim=0)
-        elif self.cfg.EXP.RISK == "fnr":
-            if explicit:
-                pass
-            else:
-                nr_out = bern_batch.sum() + 1e-10
-                risk = loss_batch.mean(dim=0) / nr_out
-        elif self.cfg.EXP.RISK == "fpr":
-            if explicit:
-                pass
-            else:
-                nr_in = ((bern_batch.shape[0] - bern_batch.sum()) + 1e-10)
-                risk = loss_batch.mean(dim=0) / nr_in
         else:
             raise ValueError(f"Unknown loss type: {self.cfg.EXP.RISK}")
         return risk
@@ -111,20 +99,14 @@ class RunningRiskTracker():
         self.false_alarms = torch.zeros((self.cfg.EXP.NR_TRIALS, self.psi_size))
         self.detection_delay = torch.zeros((self.cfg.EXP.NR_TRIALS, self.psi_size))
         
-    def get_risk(self, losses, bern, ts):
+    def get_risk(self, losses, ts):
         """
         get running risk for all psi candidates for one time step
         """
         window = self.tracker_window if self.tracker_window > 0 else ts
         ts_start = max(ts - window, 0)
-        if self.cfg.EXP.RISK == "fpr_fnr":
+        if self.cfg.EXP.RISK == "miscover":
             risk = losses[ts_start:(ts + 1), :].mean(dim=0)
-        elif self.cfg.EXP.RISK == "fnr":
-            nr_out = bern[ts_start:(ts + 1), :].sum() + 1e-10
-            risk = losses[ts_start:(ts + 1), :].mean(dim=0) / nr_out
-        elif self.cfg.EXP.RISK == "fpr":
-            nr_in = bern[ts_start:(ts + 1), :].eq(0).sum() + 1e-10
-            risk = losses[ts_start:(ts + 1), :].mean(dim=0) / nr_in
         else:
             raise ValueError(f"Unknown loss type: {self.cfg.EXP.RISK}")
         return risk

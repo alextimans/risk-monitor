@@ -53,6 +53,16 @@ class ExpCP:
         self.logger.info("Loaded dataset")
         return data
     
+    def get_data_time_idx(self, data):
+        data_time_idx = {}
+        nr_samp_start = 0
+        for ts in range(1, self.model_cfg.eval_next_timestamps + 1):
+            curr_time = self.model_cfg.split_time + ts
+            nr_samp = len(data.datasets[curr_time][data.mode]["labels"])
+            data_time_idx[curr_time] = [nr_samp_start, nr_samp_start + nr_samp]
+            nr_samp_start += nr_samp
+        return data_time_idx
+    
     def prepare_data(self, x, y):
         if isinstance(x, tuple):
             x = (elt.to(self.device) for elt in x)
@@ -103,65 +113,38 @@ class ExpCP:
             raise ValueError(f"Set score '{self.cfg.EXP.OUT_SCORE}' not supported.")
         return score
     
-    def update_ood_prob(self, ood_probs, ood_prob_idx, ts):
+    def update_data_time_idx(self, data_time_idx, time_idx, ts):
         """
-        check if the ood probability should be updated and return the new value
+        check if the data sampling range should be updated and return the new values
         """
-        if (ts > 0) and (ts % self.cfg.EXP.NR_OOD_TIMESTEPS == 0) and (ts < len(ood_probs) * self.cfg.EXP.NR_OOD_TIMESTEPS):
-            ood_prob_idx += 1
-        return ood_probs[ood_prob_idx], ood_prob_idx
+        if (ts > 0) and (ts % self.cfg.EXP.NR_CP_TIMESTEPS == 0) and (ts < self.model_cfg.eval_next_timestamps * self.cfg.EXP.NR_CP_TIMESTEPS):
+            time_idx += 1
+        return data_time_idx[time_idx], time_idx
     
-    def draw_samples(self, ood_prob, id_labels, id_preds, id_conf, ood_labels, ood_preds, ood_conf):
+    def draw_samples(self, data_idx, labs, preds, confs):
         """
-        draw a batch of samples from id and ood data with a given ood probability
+        draw a batch of samples from the specified data time range
         """
-        bern_batch = torch.from_numpy(
-            np.random.binomial(1, ood_prob, self.cfg.EXP.NR_POINT_RISK_SAMP)
-        )  # (NR_POINT_RISK_SAMP,)
-        
-        nr_ood = bern_batch.sum().item()
-        nr_id = len(bern_batch) - nr_ood
-        ood_idx = np.random.randint(0, len(ood_labels), nr_ood)
-        id_idx = np.random.randint(0, len(id_labels), nr_id)
-        
-        return (
-            bern_batch,
-            torch.cat([id_labels[id_idx], ood_labels[ood_idx]]),  # (NR_POINT_RISK_SAMP,)
-            torch.cat([id_preds[id_idx], ood_preds[ood_idx]]),  # (NR_POINT_RISK_SAMP,)
-            torch.cat([id_conf[id_idx], ood_conf[ood_idx]]),  # (NR_POINT_RISK_SAMP,)
-        )
+        rand_idx = torch.randint(data_idx[0], data_idx[1], (self.cfg.EXP.NR_POINT_RISK_SAMP,))
+        return labs[rand_idx], preds[rand_idx], confs[rand_idx] 
     
-    def reduce_batch(self, loss_batch, bern_batch):
+    def reduce_batch(self, loss_batch):
         reduce_idx = torch.randperm(self.cfg.EXP.NR_POINT_RISK_SAMP)[:self.cfg.EXP.BATCH_TIMESTEP]
-        return loss_batch[reduce_idx], bern_batch[reduce_idx]
-        
-    def compute_sample_losses(self, psi_cand, bern_batch, lab_batch, pred_batch, conf_batch):
+        return loss_batch[reduce_idx]
+    
+    def compute_sample_losses(self, psi_cand, lab_batch, pred_batch, conf_batch):
         """
         get the loss for all psi candidates for a batch of samples
         """
-        if self.cfg.EXP.RISK == "fpr_fnr":
-            psi_loss = torch.where(
-                bern_batch.unsqueeze(1) == 0,  # if bern == 0 (ID sample)
-                conf_batch.unsqueeze(1) > psi_cand,  # false positive
-                conf_batch.unsqueeze(1) <= psi_cand  # false negative
-            )
-        elif self.cfg.EXP.RISK == "fnr":
-            psi_loss = torch.where(
-                bern_batch.unsqueeze(1) == 0,
-                torch.zeros_like(psi_cand),  # no penalty for false positive
-                conf_batch.unsqueeze(1) <= psi_cand  # false negative
-            )
-        elif self.cfg.EXP.RISK == "fpr":
-            psi_loss = torch.where(
-                bern_batch.unsqueeze(1) == 0,
-                conf_batch.unsqueeze(1) > psi_cand,  # false positive
-                torch.zeros_like(psi_cand)  # no penalty for false negative
-            )
+        if self.cfg.EXP.RISK == "miscover":
+            set_mask = (conf_batch.unsqueeze(-1) >= psi_cand.unsqueeze(0).unsqueeze(0))  # (nr_samples, nr_class, nr_psi)
+            cover = set_mask[torch.arange(set_mask.shape[0]), lab_batch]  # (nr_samples, nr_psi)
+            psi_loss = (1.0 - cover.to(torch.float32))  # miscoverage loss
         else:
             raise ValueError(f"Unknown risk type {self.cfg.EXP.RISK}.")
-        return psi_loss.to(torch.float32) # (NR_POINT_RISK_SAMP, psi_size)
+        return psi_loss # (NR_POINT_RISK_SAMP, psi_size)
     
-    def get_valid_psi(self, psi_cand, stop_time, psi_select="min"):
+    def get_valid_psi(self, psi_cand, stop_time, psi_select="max"):
         """
         get the set of valid psi candidates and the selected psi for one time step
         """
@@ -178,7 +161,7 @@ class ExpCP:
             else:
                 raise ValueError(f"Unknown psi selection criterion {psi_select}.")
         else:  # default to a 'trivial' safe zone
-            select_psi = torch.ones(1)
+            select_psi = torch.zeros(1)  # here psi=0 is always valid (full label set)
         return select_psi, valid_psi.tolist()
     
     def get_psi_cs_size(self, valid_psi):
@@ -325,7 +308,7 @@ def set_dirs(cfg):
     if cfg.RUN.SUB_DIR == "auto":
         cfg.RUN.SUB_DIR = f"{cfg.MODEL.TYPE}_fmow_{cfg.EXP.SET_SCORE}_{cfg.EXP.SPLIT_TIME}"
     if cfg.RUN.EXP_DIR == "auto":
-        cfg.RUN.EXP_DIR = f"erc_{cfg.EXP.EPS}_{cfg.EXP.DELTA}_{cfg.EXP.RISK}_ts{cfg.EXP.NR_TIMESTEPS}_bts{cfg.EXP.BATCH_TIMESTEP}_ots{cfg.EXP.NR_OOD_TIMESTEPS}_tw{cfg.EXP.TRACKER_WINDOW[1]}"
+        cfg.RUN.EXP_DIR = f"erc_{cfg.EXP.EPS}_{cfg.EXP.DELTA}_{cfg.EXP.RISK}_ts{cfg.EXP.NR_TIMESTEPS}_bts{cfg.EXP.BATCH_TIMESTEP}_sts{cfg.EXP.NR_CP_TIMESTEPS}_tw{cfg.EXP.TRACKER_WINDOW[1]}"
     if cfg.RUN.LOAD_DIR == "auto": # Point loading dir to sub_dir if not specified
         cfg.RUN.LOAD_DIR = os.path.join(cfg.PROJECT.OUTPUT_DIR, exp_type, cfg.RUN.SUB_DIR)
     
@@ -419,14 +402,11 @@ def main():
         logger.info("Loaded to file.")
     
     logger.info("Starting test stream setting...")
-    
-    raise NotImplementedError("Continue from here...")
-    
+     
     # Init stream vars valid for all trackers
-    ood_probs = torch.arange(cfg.EXP.OOD_START, cfg.EXP.OOD_END + cfg.EXP.OOD_STEP, cfg.EXP.OOD_STEP)
+    data_time_idx = exp.get_data_time_idx(data)
     psi_cand = torch.arange(cfg.EXP.PSI_START, cfg.EXP.PSI_END + cfg.EXP.PSI_STEP, cfg.EXP.PSI_STEP)
     psi_size = len(psi_cand)
-    stream_bern = torch.zeros((cfg.EXP.NR_TRIALS, cfg.EXP.NR_TIMESTEPS, cfg.EXP.BATCH_TIMESTEP))
     stream_losses = torch.zeros((cfg.EXP.NR_TRIALS, cfg.EXP.NR_TIMESTEPS, psi_size))
 
     logger.info("Initializing trackers...")
@@ -438,28 +418,27 @@ def main():
     
     logger.info("Running experiment loop...")
     for tr in range(cfg.EXP.NR_TRIALS):
-        ood_prob_idx = 0
-        ood_prob = ood_probs[ood_prob_idx]
+        time_idx = model_cfg.split_time + 1
         
         for ts in tqdm(range(cfg.EXP.NR_TIMESTEPS), desc=f"Trial {tr+1}, Time step", leave=False):
-            # update ood prob if necessary
-            ood_prob, ood_prob_idx = exp.update_ood_prob(ood_probs, ood_prob_idx, ts)
+            # update data range for sampling based on time
+            data_idx, time_idx = exp.update_data_time_idx(data_time_idx, time_idx, ts)
+            
             # draw samples
-            bern_batch, lab_batch, pred_batch, conf_batch = exp.draw_samples(
-                ood_prob, id_labels, id_preds, id_conf, ood_labels, ood_preds, ood_conf
+            lab_batch, pred_batch, conf_batch = exp.draw_samples(
+                data_idx, labs, preds, confs
             )
             
             # get sample losses & point risk for full batch
-            loss_batch = exp.compute_sample_losses(psi_cand, bern_batch, lab_batch, pred_batch, conf_batch)
-            point_risk.risk[tr, ts, :] = point_risk.get_risk(loss_batch, bern_batch, explicit=False)
+            loss_batch = exp.compute_sample_losses(psi_cand, lab_batch, pred_batch, conf_batch)
+            point_risk.risk[tr, ts, :] = point_risk.get_risk(loss_batch, explicit=False)
             
             # reduce batch and update stream vars
-            loss_batch, bern_batch = exp.reduce_batch(loss_batch, bern_batch)
-            stream_bern[tr, ts, :] = bern_batch # (BATCH_TIMESTEP,)
+            loss_batch = exp.reduce_batch(loss_batch)
             stream_losses[tr, ts, :] = loss_batch.mean(dim=0) # (psi_size,)
             
             # get running risk
-            running_risk.risk[tr, ts, :] = running_risk.get_risk(stream_losses[tr], stream_bern[tr], ts)
+            running_risk.risk[tr, ts, :] = running_risk.get_risk(stream_losses[tr], ts)
 
             # get eprocess and update storage vars
             eprocess.bets[tr, ts, :] = eprocess.get_bets(stream_losses[tr], ts)
@@ -495,31 +474,31 @@ def main():
             )
             # get psi-CIs and store
             point_risk.psi_select[tr, ts], valid_psi = exp.get_valid_psi(
-                psi_cand, point_risk.stop_time[tr], psi_select="min"
+                psi_cand, point_risk.stop_time[tr], psi_select="max"
             )
             point_risk.psi_cs_size[tr, ts] = exp.get_psi_cs_size(valid_psi)
             point_risk.psi_cs[tr][ts].append(valid_psi)
             
             running_risk.psi_select[tr, ts], valid_psi = exp.get_valid_psi(
-                psi_cand, running_risk.stop_time[tr], psi_select="min"
+                psi_cand, running_risk.stop_time[tr], psi_select="max"
             )
             running_risk.psi_cs_size[tr, ts] = exp.get_psi_cs_size(valid_psi)
             running_risk.psi_cs[tr][ts].append(valid_psi)
             
             eprocess.psi_select[tr, ts], valid_psi = exp.get_valid_psi(
-                psi_cand, eprocess.stop_time[tr], psi_select="min"
+                psi_cand, eprocess.stop_time[tr], psi_select="max"
             )
             eprocess.psi_cs_size[tr, ts] = exp.get_psi_cs_size(valid_psi)
             eprocess.psi_cs[tr][ts].append(valid_psi)
             
             naive_eprocess.psi_select[tr, ts], valid_psi = exp.get_valid_psi(
-                psi_cand, naive_eprocess.stop_time[tr], psi_select="min"
+                psi_cand, naive_eprocess.stop_time[tr], psi_select="max"
             )
             naive_eprocess.psi_cs_size[tr, ts] = exp.get_psi_cs_size(valid_psi)
             naive_eprocess.psi_cs[tr][ts].append(valid_psi)
             
             pmeb_eprocess.psi_select[tr, ts], valid_psi = exp.get_valid_psi(
-                psi_cand, pmeb_eprocess.stop_time[tr], psi_select="min"
+                psi_cand, pmeb_eprocess.stop_time[tr], psi_select="max"
             )
             pmeb_eprocess.psi_cs_size[tr, ts] = exp.get_psi_cs_size(valid_psi)
             pmeb_eprocess.psi_cs[tr][ts].append(valid_psi)

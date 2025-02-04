@@ -170,7 +170,7 @@ class ExpOOD:
             else:
                 raise ValueError(f"Unknown psi selection criterion {psi_select}.")
         else:  # default to a 'trivial' safe zone
-            select_psi = torch.ones(1)
+            select_psi = torch.zeros(1)  # Note: for TER and mixture dist. there is no real safe zone
         return select_psi, valid_psi.tolist()
     
     def get_psi_cs_size(self, valid_psi):

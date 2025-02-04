@@ -48,7 +48,7 @@ def plot_risk(
     plt.ylabel("Risk")
     plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     plt.xlim(0, cfg.EXP.NR_TIMESTEPS)
-    plt.ylim(0, 0.25)
+    # plt.ylim(0, 0.25)
     plt.grid(True)
     save_fig(logger, cfg.RUN.PLOT_DIR, "point_risk_over_time")
 
@@ -69,7 +69,7 @@ def plot_risk(
     plt.ylabel("Risk")
     plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     plt.xlim(0, cfg.EXP.NR_TIMESTEPS)
-    plt.ylim(0, 0.25)
+    # plt.ylim(0, 0.25)
     plt.grid(True)
     save_fig(logger, cfg.RUN.PLOT_DIR, "running_risk_over_time")
     
