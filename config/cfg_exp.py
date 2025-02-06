@@ -49,15 +49,15 @@ CFG.EXP.PSI_STEP = 0.01
 
 CFG.EXP.RISK = "fpr_fnr"
 CFG.EXP.BET_TYPE = "approx_grapa"
-CFG.EXP.NR_POINT_RISK_SAMP = 100
+CFG.EXP.NR_POINT_RISK_SAMP = 1000
 CFG.EXP.NR_BURNIN = 100
 CFG.EXP.TRACKER_WINDOW = [0, 0, 0]  # [point_risk, running_risk, eprocess]
-CFG.EXP.STOP_COUNTER = [0, 0, 0]  # [point_risk, running_risk, eprocess]
+CFG.EXP.STOP_COUNTER = [5, 25, 0]  # [point_risk, running_risk, eprocess]
 
 ### OOD EXP SPECIFIC
 CFG.EXP.DATA_ID = "cifar10"
 CFG.EXP.DATA_OOD = "svhn"
-CFG.EXP.NR_OOD_TIMESTEPS = 100
+CFG.EXP.NR_OOD_TIMESTEPS = 200
 CFG.EXP.OUT_SCORE = "entropy"
 CFG.EXP.OOD_START = 0.0
 CFG.EXP.OOD_END = 1.0

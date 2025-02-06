@@ -8,7 +8,6 @@ sys.path.append(code_dir)
 import argparse
 from pathlib import Path
 
-import numpy as np
 from tqdm import tqdm
 
 import torch

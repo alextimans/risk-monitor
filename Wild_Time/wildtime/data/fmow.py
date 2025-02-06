@@ -13,6 +13,7 @@ from .utils import download_detection
 
 ID_HELD_OUT = 0.1
 
+
 class FMoWBase(Dataset):
     def __init__(self, args):
         super().__init__()

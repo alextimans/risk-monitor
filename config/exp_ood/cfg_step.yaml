@@ -1,0 +1,27 @@
+
+PROJECT:
+  CONFIG_DIR: "erc/config/exp_ood"
+
+MODEL:
+  TYPE: resnet50
+
+EXP:
+  EPS: 0.1
+  DELTA: 0.1
+  NR_TRIALS: 50
+  NR_TIMESTEPS: 1500
+  PSI_START: 0.0
+  PSI_END: 1.0
+  PSI_INIT: 1.0
+  PSI_STEP: 0.01
+  RISK: fpr_fnr
+  BET_TYPE: approx_grapa
+  NR_POINT_RISK_SAMP: 1000
+  NR_BURNIN: 100
+  DATA_ID: cifar10
+  DATA_OOD: svhn
+  NR_OOD_TIMESTEPS: 200
+  OUT_SCORE: entropy
+  OOD_START: 0.0
+  OOD_END: 1.0
+  OOD_STEP: 0.05
