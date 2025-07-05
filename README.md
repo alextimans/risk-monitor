@@ -1,7 +1,7 @@
 ## Overview
 
 This is the public code repository for our work
-[On Continuous Monitoring of Risk Violations under Unknown Shift](https://alextimans.github.io/) presented at [UAI 2025](https://www.auai.org/uai2025/).
+[On Continuous Monitoring of Risk Violations under Unknown Shift](https://www.arxiv.org/abs/2506.16416) presented at [UAI 2025](https://www.auai.org/uai2025/).
 
 
 #### Abstract :memo:
