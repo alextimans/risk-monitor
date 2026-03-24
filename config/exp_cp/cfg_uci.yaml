@@ -1,0 +1,27 @@
+
+PROJECT:
+  CONFIG_DIR: "erc/config/exp_cp"
+
+# DATASET:
+#   BATCH_PRED: 1
+
+MODEL:
+  TYPE: rf
+  DIR: none
+
+EXP:
+  EPS: 0.1
+  DELTA: 0.1
+  NR_TRIALS: 50
+  NR_TIMESTEPS: 15000
+  PSI_START: 0.0
+  PSI_END: 0.05
+  PSI_INIT: 0.0
+  PSI_STEP: 0.0005
+  RISK: miscover
+  BET_TYPE: approx_grapa
+  NR_POINT_RISK_SAMP: 100
+  NR_BURNIN: 100
+  SPLIT_TIME: 12500
+  SET_SCORE: abs_res
+  # NR_CP_TIMESTEPS: 365

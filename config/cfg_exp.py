@@ -109,4 +109,3 @@ def update_from_args(cfg, args):
     ]
     cfg.merge_from_list(args_list)
     return cfg, args_list
-

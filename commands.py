@@ -8,11 +8,13 @@ configs = [
     ('exp_cp', 'cfg_natural'),
     ('exp_ood', 'cfg_step'), 
     ('exp_ood', 'cfg_noshift'), 
-    ('exp_ood', 'cfg_direct')
+    ('exp_ood', 'cfg_direct'),
+    # ('exp_uci', 'cfg_uci')
 ]
 tracker_window = {
     "exp_cp": [0, 365, 50, 10],
-    "exp_ood": [0, 200, 50, 10]
+    "exp_ood": [0, 200, 50, 10],
+    # "exp_uci": [0, 200, 50, 10]
 }
 batch_ts = [1, 10, 50]
 sc = [5, 25, 0]
