@@ -11,12 +11,6 @@
 /models/**/*.pth
 /models/**/*.ckpt
 
-# Data: keep only uci-cbm/data_aug.csv
-/data/*
-!/data/uci-cbm/
-/data/uci-cbm/*
-!/data/uci-cbm/data_aug.csv
-
 ######################
 
 # Byte-compiled / optimized / DLL files
