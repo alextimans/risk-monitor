@@ -1,16 +1,10 @@
 ## Overview
 
-This is the public code repository for our work
-<<<<<<< HEAD
-[On Continuous Monitoring of Risk Violations under Unknown Shift](https://proceedings.mlr.press/v286/timans25a.html) presented as a conference paper at the [41st Conference on Uncertainty in Artificial Intelligence (UAI)](https://www.auai.org/uai2025/).
+This is the public code repository for our work [On Continuous Monitoring of Risk Violations under Unknown Shift](https://proceedings.mlr.press/v286/timans25a.html) presented as a conference paper at the [41st Conference on Uncertainty in Artificial Intelligence (UAI)](https://www.auai.org/uai2025/).
 
 <p align="center">
   <img src="method-viz.jpeg" width="100%">
 </p>
-=======
-[On Continuous Monitoring of Risk Violations under Unknown Shift](https://www.arxiv.org/abs/2506.16416) presented at [UAI 2025](https://www.auai.org/uai2025/).
-
->>>>>>> origin/main
 
 #### Abstract :memo:
 ---
@@ -35,7 +29,6 @@ If you find this repository useful, please consider citing our work:
 The [Robert Bosch GmbH](https://www.bosch.com) is acknowledged for financial support.
 
 ## Repo structure
-<<<<<<< HEAD
 The folder structure of the repo is quite self-explanatory, but below are some comments on each folder or file on the main repository level. The most important folder is ```exp```.
 
 ```
@@ -143,9 +136,6 @@ sh risk-monitor/run.sh
     - ```pmeb_eprocess.pt```: The e-process $M^{EB}_t(\psi)$ from the paper
 - Each ```.pt``` results file in turn contains a dictionary storing relevant results information, and includes the keys ```dict_keys(['risk', 'stop_time', 'psi_cs', 'psi_cs_size', 'psi_select', 'false_alarms', 'detection_delay'])```.
 - To generate the explicit paper figures that can be saved to file, see the interactive ```plots/plots.ipynb``` notebook.
-=======
-Experiment code and instructions will be updated here shortly, please bear with us!
->>>>>>> origin/main
 
 #### Still open questions?
 
