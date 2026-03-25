@@ -37,7 +37,7 @@ while read -r command; do
     fi
     rm "$output"
 
-done < "erc/commands_uci.txt"
+done < "erc/commands.txt"
 
 echo "++++++++++++++++++++++++++++++++++"
 echo "+++ end experiments run script +++"

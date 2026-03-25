@@ -1,0 +1,17 @@
+name: erc
+channels:
+  - pytorch
+  - conda-forge
+dependencies:
+  - python=3.9
+  - pip
+  - numpy
+  - pytorch
+  - torchvision
+  - matplotlib
+  - scikit-learn
+  - pyyaml
+  - tqdm
+  - pillow
+  - pip:
+      - yacs==0.1.8
