@@ -159,6 +159,7 @@ class RunningRiskTracker():
         
 
 class EProcessTracker():
+    # This class implements the e-process M_t(psi) from the paper
     def __init__(self, cfg, logger, psi_cand):
         self.cfg = cfg
         self.logger = logger
@@ -264,6 +265,7 @@ class EProcessTracker():
 
 
 class NaiveEProcessTracker(EProcessTracker): # # Inherit from EProcessTracker
+    # This class implements the e-process M^{SUM}_t(psi) from the paper
     def __init__(self, cfg, logger, psi_cand):
         super().__init__(cfg, logger, psi_cand) 
     
@@ -290,6 +292,7 @@ class NaiveEProcessTracker(EProcessTracker): # # Inherit from EProcessTracker
 
 
 class PMEBProcessTracker(EProcessTracker): # # Inherit from EProcessTracker
+    # This class implements the e-process M^{EB}_t(psi) from the paper
     def __init__(self, cfg, logger, psi_cand):
         super().__init__(cfg, logger, psi_cand) 
     

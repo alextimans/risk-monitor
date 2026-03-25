@@ -274,7 +274,7 @@ def create_parser():
         required=False,
         help="How many samples are received per timestep.",
     )
-    parser.add_argument(  # --tracker_window 10 20 30
+    parser.add_argument(  # use like --tracker_window 10 20 30
         "--tracker_window",
         type=int,
         nargs='+',  # Accepts one or more values as a list
@@ -282,7 +282,7 @@ def create_parser():
         required=False,
         help="Tracker window of time steps for running trackers (provide space-separated values).",
     )
-    parser.add_argument(  # --stop_counter 10 20 30
+    parser.add_argument(  # use like --stop_counter 10 20 30
         "--stop_counter",
         type=int,
         nargs='+',  # Accepts one or more values as a list
@@ -452,7 +452,7 @@ def main():
             pmeb_eprocess.evalues[tr, ts, :] = pmeb_eprocess.get_evalues(stream_losses[tr], ts, loss_batch, pmeb_eprocess.bets[tr, ts, :], reduction="mean")
             pmeb_eprocess.eprocess[tr, ts, :] = pmeb_eprocess.get_eprocess(pmeb_eprocess.evalues[tr, ts, :], tr, ts)
             
-            # more trackers here...
+            # add more trackers here if desired...
 
             # UPDATE PER-STEP METRICS
             # check stopping times
@@ -530,6 +530,7 @@ def main():
     
     if cfg.RUN.PLOT:
         logger.info("Plotting experiment results...")
+        # automatic plotting function generates a series of relevant diagnostic plots
         plot_auto(
             cfg,
             logger,

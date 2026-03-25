@@ -4,7 +4,7 @@ PROJECT:
 
 MODEL:
   TYPE: erm
-  DIR: "./models/fmow_models/fmow_ERM-train_update_iter=3000-lr=0.0001-mini_batch_size=64-seed=1-offline_time=13"
+  DIR: "./models/checkpoints/fmow_ERM-train_update_iter=3000-lr=0.0001-mini_batch_size=64-seed=1-offline_time=13"
 
 EXP:
   EPS: 0.1
